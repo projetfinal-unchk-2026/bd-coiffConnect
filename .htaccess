@@ -1,0 +1,6 @@
+Options -Indexes
+
+# Rediriger tout vers public/index.php
+RewriteEngine On
+RewriteRule ^$ public/ [L]
+RewriteRule ^((?!public/).*)$ public/$1 [L,QSA]
