@@ -39,12 +39,10 @@ class ReservationModel extends Model {
                 JOIN services sv    ON sv.id = r.service_id
                 WHERE r.salon_id = ?";
         $params = [$salonId];
-
         if ($date) {
             $sql .= " AND r.date_reservation = ?";
             $params[] = $date;
         }
-
         $sql .= " ORDER BY r.date_reservation, r.heure_reservation";
         return $this->fetchAll($sql, $params);
     }
@@ -71,6 +69,7 @@ class ReservationModel extends Model {
         }
 
         $where = implode(" AND ", $conditions);
+
         return $this->fetchAll(
             "SELECT r.*,
                     u.nom AS client_nom, u.prenom AS client_prenom,
@@ -183,6 +182,18 @@ class ReservationModel extends Model {
              WHERE date_reservation >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
              GROUP BY mois
              ORDER BY mois"
+        );
+    }
+
+    // ── Ajouté pour la page Statistiques ─────────────────────────────
+    public function getRepartitionServices(): array {
+        return $this->fetchAll(
+            "SELECT sv.nom AS service_nom, COUNT(*) AS nb
+             FROM reservations r
+             JOIN services sv ON sv.id = r.service_id
+             WHERE r.statut != 'annulee'
+             GROUP BY sv.nom
+             ORDER BY nb DESC"
         );
     }
 }

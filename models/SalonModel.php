@@ -38,7 +38,6 @@ class SalonModel extends Model {
             $params[] = "%$ville%";
             $params[] = "%$ville%";
         }
-
         if ($service) {
             $conditions[] = "EXISTS (
                 SELECT 1 FROM services sv
@@ -50,6 +49,7 @@ class SalonModel extends Model {
         }
 
         $where = "WHERE " . implode(" AND ", $conditions);
+
         return $this->fetchAll(
             "SELECT s.*, u.nom AS proprietaire_nom
              FROM salons s
@@ -121,6 +121,29 @@ class SalonModel extends Model {
              WHERE s.est_actif = 1
              GROUP BY s.id
              ORDER BY s.note_moyenne DESC, nb_reservations DESC
+             LIMIT ?",
+            [$limit]
+        );
+    }
+
+    // ── Ajouté pour la page Statistiques ─────────────────────────────
+    public function getNoteMoyenneGlobale(): float {
+        $result = $this->fetch(
+            "SELECT AVG(note_moyenne) AS moyenne FROM salons WHERE est_actif = 1"
+        );
+        return (float) ($result['moyenne'] ?? 0);
+    }
+
+    public function getTopParRevenu(int $limit = 5): array {
+        return $this->fetchAll(
+            "SELECT s.nom, s.note_moyenne,
+                    COUNT(r.id) AS reservations,
+                    COALESCE(SUM(CASE WHEN r.statut = 'terminee' THEN r.montant ELSE 0 END), 0) AS revenu
+             FROM salons s
+             LEFT JOIN reservations r ON r.salon_id = s.id
+             WHERE s.est_actif = 1
+             GROUP BY s.id
+             ORDER BY revenu DESC
              LIMIT ?",
             [$limit]
         );

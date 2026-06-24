@@ -7,6 +7,7 @@ require_once ROOT_PATH . '/models/AvisModel.php';
 require_once ROOT_PATH . '/models/ServiceModel.php';
 
 class AdminController {
+
     private UtilisateurModel $userModel;
     private SalonModel       $salonModel;
     private ReservationModel $reservModel;
@@ -116,5 +117,90 @@ class AdminController {
     public function statsJson(): void {
         $evolution = $this->reservModel->getEvolutionMensuelle();
         jsonResponse(['evolution' => $evolution]);
+    }
+
+    // ── Statistiques détaillées (page Statistiques) ─────────────────
+    public function statistiques(): void {
+        $evolution = $this->reservModel->getEvolutionMensuelle(); // 6 derniers mois : mois, nb, total
+
+        $evolutionCA = array_map(fn($r) => [
+            'mois'   => $this->moisFr($r['mois']),
+            'revenu' => (float) $r['total'],
+        ], $evolution);
+
+        $dernier      = end($evolution) ?: ['nb' => 0, 'total' => 0];
+        $avantDernier = count($evolution) >= 2 ? $evolution[count($evolution) - 2] : ['nb' => 0, 'total' => 0];
+
+        $revenuActuel    = (float) $dernier['total'];
+        $revenuPrecedent = (float) $avantDernier['total'];
+        $croissance = $revenuPrecedent > 0
+            ? round((($revenuActuel - $revenuPrecedent) / $revenuPrecedent) * 100, 1)
+            : 0;
+
+        $comparaisonMois = [
+            'mois_precedent' => [
+                'label'        => $this->moisFr($avantDernier['mois'] ?? ''),
+                'revenu'       => (float) ($avantDernier['total'] ?? 0),
+                'reservations' => (int) ($avantDernier['nb'] ?? 0),
+            ],
+            'mois_actuel' => [
+                'label'        => $this->moisFr($dernier['mois'] ?? ''),
+                'revenu'       => $revenuActuel,
+                'reservations' => (int) ($dernier['nb'] ?? 0),
+            ],
+        ];
+
+        $statsGlobales = [
+            'revenu_total'         => $this->reservModel->getTotalRevenu(),
+            'croissance'           => $croissance,
+            'reservations_totales' => $this->reservModel->countAll(),
+            'note_moyenne'         => $this->salonModel->getNoteMoyenneGlobale(),
+        ];
+
+        $topEtablissements = $this->salonModel->getTopParRevenu(5);
+        $topServices       = $this->getRepartitionServicesCategorisee();
+
+        view('admin/statistiques', compact(
+            'statsGlobales', 'evolutionCA', 'comparaisonMois', 'topEtablissements', 'topServices'
+        ));
+    }
+
+    // ── Privé : regroupe les services par grande catégorie (Coiffure/Spa/Massage) ──
+    private function getRepartitionServicesCategorisee(): array {
+        $rows = $this->reservModel->getRepartitionServices();
+        $categories = ['Coiffure' => 0, 'Spa' => 0, 'Massage' => 0, 'Autre' => 0];
+
+        foreach ($rows as $r) {
+            $nom = strtolower($r['service_nom']);
+            if (str_contains($nom, 'coiff') || str_contains($nom, 'coupe') || str_contains($nom, 'tress') || str_contains($nom, 'barb')) {
+                $categories['Coiffure'] += (int) $r['nb'];
+            } elseif (str_contains($nom, 'spa')) {
+                $categories['Spa'] += (int) $r['nb'];
+            } elseif (str_contains($nom, 'mass')) {
+                $categories['Massage'] += (int) $r['nb'];
+            } else {
+                $categories['Autre'] += (int) $r['nb'];
+            }
+        }
+
+        $total = array_sum($categories) ?: 1;
+        $result = [];
+        foreach ($categories as $nom => $nb) {
+            if ($nb > 0) {
+                $result[] = ['nom' => $nom, 'valeur' => round($nb / $total * 100)];
+            }
+        }
+        return $result;
+    }
+
+    // ── Privé : convertit "2026-06" en "Jun" pour l'affichage ──────────
+    private function moisFr(string $ym): string {
+        $mois = [
+            '01' => 'Jan', '02' => 'Fév', '03' => 'Mar', '04' => 'Avr',
+            '05' => 'Mai', '06' => 'Jun', '07' => 'Jul', '08' => 'Aoû',
+            '09' => 'Sep', '10' => 'Oct', '11' => 'Nov', '12' => 'Déc',
+        ];
+        $parts = explode('-', $ym);
+        return $mois[$parts[1] ?? ''] ?? $ym;
     }
 }
